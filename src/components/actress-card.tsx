@@ -1,6 +1,7 @@
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { useCallback, useRef } from 'react';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -15,19 +16,37 @@ type Props = {
   busy?: boolean;
 };
 
+async function openGoogleSearch(name: string) {
+  const url = `https://www.google.com/search?q=${encodeURIComponent(name)}`;
+  await Linking.openURL(url);
+}
+
 export function ActressCard({ item, onToggleFavourite, onDelete, busy }: Props) {
   const theme = useTheme();
   const name = item.actress_name?.trim() || 'Unknown';
+  const openingRef = useRef(false);
+
+  const handleImagePress = useCallback(() => {
+    if (openingRef.current) return;
+    openingRef.current = true;
+    void openGoogleSearch(name).finally(() => {
+      openingRef.current = false;
+    });
+  }, [name]);
 
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
-      <View style={styles.imageWrap}>
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={`Search ${name} on Google`}
+        onPress={handleImagePress}
+        style={styles.imageWrap}>
         {item.actress_pic_url ? (
           <Image
             source={{ uri: item.actress_pic_url }}
             style={styles.image}
             contentFit="cover"
-            transition={200}
+            recyclingKey={String(item.id)}
           />
         ) : (
           <View style={[styles.image, styles.placeholder, { backgroundColor: theme.backgroundSelected }]}>
@@ -47,7 +66,7 @@ export function ActressCard({ item, onToggleFavourite, onDelete, busy }: Props) 
             />
           </View>
         )}
-      </View>
+      </Pressable>
 
       <View style={styles.body}>
         <ThemedText type="smallBold" numberOfLines={2} style={styles.name}>

@@ -11,3 +11,5 @@ backend/.env
 backend/node_modules
 backend/dist
 node_modules
+AI/.env
+.expo

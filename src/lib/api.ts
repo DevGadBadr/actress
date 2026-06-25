@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 
 import type { AgentData, PaginatedAgentData } from '@/types/agent-data';
+import type { ChatMessage, ChatResponse } from '@/types/chat';
 
 const DEV_API_URL = 'https://devgadbadr.me/actressapi';
 
@@ -52,4 +53,17 @@ export function toggleFavourite(id: number): Promise<AgentData> {
 
 export function deleteAgentData(id: number): Promise<void> {
   return request<void>(`/agent-data/${id}`, { method: 'DELETE' });
+}
+
+export function sendAgentChat(params: {
+  message: string;
+  history: ChatMessage[];
+}): Promise<ChatResponse> {
+  return request<ChatResponse>('/agent/chat', {
+    method: 'POST',
+    body: JSON.stringify({
+      message: params.message,
+      history: params.history,
+    }),
+  });
 }
