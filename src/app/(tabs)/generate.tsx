@@ -3,13 +3,13 @@ import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   StyleSheet,
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ActressIcon } from '@/components/actress-icon';
@@ -113,10 +113,7 @@ export default function GenerateScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
-        <KeyboardAvoidingView
-          style={styles.keyboardAvoid}
-          behavior="padding"
-          keyboardVerticalOffset={0}>
+        <KeyboardAvoidingView style={styles.keyboardAvoid} behavior="padding">
           <FlatList
             ref={listRef}
             data={rows}
