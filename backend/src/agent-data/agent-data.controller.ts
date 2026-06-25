@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Delete,
   Get,
@@ -6,7 +7,9 @@ import {
   ParseIntPipe,
   Patch,
   Query,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { AgentDataService } from './agent-data.service';
 import { QueryAgentDataDto } from './dto/query-agent-data.dto';
 
@@ -21,6 +24,19 @@ export class AgentDataController {
       query.limit ?? 10,
       query.shuffle ?? false,
     );
+  }
+
+  @Get('image')
+  async proxyImage(@Query('url') url: string, @Res() res: Response) {
+    if (!url) {
+      throw new BadRequestException('Missing url query parameter');
+    }
+
+    const { buffer, contentType } = await this.agentDataService.proxyImage(url);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.send(buffer);
   }
 
   @Patch(':id/favourite')

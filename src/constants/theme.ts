@@ -62,3 +62,5 @@ export const Spacing = {
 } as const;
 
 export const MaxContentWidth = 800;
+
+export const TabBarHeight = 36;

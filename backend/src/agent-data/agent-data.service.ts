@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   AgentDataRow,
   SupabaseService,
@@ -106,6 +110,41 @@ export class AgentDataService {
     }
 
     return mapRow(data as AgentDataRow);
+  }
+
+  async proxyImage(
+    url: string,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new BadRequestException('Invalid image URL');
+    }
+
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new BadRequestException('Invalid image URL protocol');
+    }
+
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'image/*',
+        'User-Agent': 'ActressApp/1.0',
+      },
+    });
+
+    if (!response.ok) {
+      throw new NotFoundException(`Image fetch failed (${response.status})`);
+    }
+
+    const contentType =
+      response.headers.get('content-type') ?? 'application/octet-stream';
+    if (!contentType.startsWith('image/')) {
+      throw new BadRequestException('URL did not return an image');
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    return { buffer, contentType };
   }
 
   async remove(id: number): Promise<void> {

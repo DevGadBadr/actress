@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ActressCard } from '@/components/actress-card';
+import { ActressIcon } from '@/components/actress-icon';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -89,9 +90,9 @@ export default function HomeScreen() {
     loadPage(1, false);
   }, [loadPage]);
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     loadPage(1, shuffleOnRefresh, true);
-  };
+  }, [loadPage, shuffleOnRefresh]);
 
   const goToPage = (nextPage: number) => {
     if (nextPage < 1 || nextPage > totalPages || nextPage === page) return;
@@ -133,42 +134,73 @@ export default function HomeScreen() {
         const nextPage = Math.min(page, nextTotalPages);
         await loadPage(nextPage, false);
       }
+      setBusyId(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete');
       setBusyId(null);
     }
   };
 
+  const paginationFooter = (
+    <ThemedView type="backgroundElement" style={styles.pagination}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Previous page"
+        disabled={page <= 1 || loading}
+        onPress={() => goToPage(page - 1)}
+        style={({ pressed }) => [
+          styles.pageButton,
+          (page <= 1 || loading) && styles.pageButtonDisabled,
+          pressed && styles.pressed,
+        ]}>
+        <SymbolView
+          name={{ ios: 'chevron.left', android: 'chevron_left', web: 'chevron_left' }}
+          size={14}
+          tintColor={page <= 1 ? theme.textSecondary : theme.text}
+        />
+      </Pressable>
+
+      <ThemedText themeColor="textSecondary" type="small" style={styles.pageLabel}>
+        {page} / {totalPages}
+      </ThemedText>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Next page"
+        disabled={page >= totalPages || loading}
+        onPress={() => goToPage(page + 1)}
+        style={({ pressed }) => [
+          styles.pageButton,
+          (page >= totalPages || loading) && styles.pageButtonDisabled,
+          pressed && styles.pressed,
+        ]}>
+        <SymbolView
+          name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
+          size={14}
+          tintColor={page >= totalPages ? theme.textSecondary : theme.text}
+        />
+      </Pressable>
+    </ThemedView>
+  );
+
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <View style={styles.titleBlock}>
-            <ThemedText type="subtitle" style={styles.title}>
-              Actresses
-            </ThemedText>
-            <ThemedText themeColor="textSecondary" type="small">
-              {total} {total === 1 ? 'profile' : 'profiles'}
-            </ThemedText>
-          </View>
-
-          <View style={styles.headerActions}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Refresh list"
-              onPress={handleRefresh}
-              style={({ pressed }) => [
-                styles.roundButton,
-                { backgroundColor: theme.backgroundElement },
-                pressed && styles.pressed,
-              ]}>
-              <SymbolView
-                name={{ ios: 'arrow.clockwise', android: 'refresh', web: 'refresh' }}
-                size={20}
-                tintColor={theme.text}
-              />
-            </Pressable>
-          </View>
+      <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
+        <View style={styles.profileRow}>
+          <ThemedText themeColor="textSecondary" type="small">
+            {total} {total === 1 ? 'profile' : 'profiles'}
+          </ThemedText>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Refresh list"
+            onPress={handleRefresh}
+            style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}>
+            <SymbolView
+              name={{ ios: 'arrow.clockwise', android: 'refresh', web: 'refresh' }}
+              size={20}
+              tintColor={theme.textSecondary}
+            />
+          </Pressable>
         </View>
 
         <ThemedView type="backgroundElement" style={styles.toolbar}>
@@ -210,6 +242,7 @@ export default function HomeScreen() {
             numColumns={2}
             columnWrapperStyle={styles.row}
             contentContainerStyle={styles.listContent}
+            contentInsetAdjustmentBehavior="automatic"
             style={styles.list}
             refreshControl={
               <RefreshControl
@@ -220,11 +253,7 @@ export default function HomeScreen() {
             }
             ListEmptyComponent={
               <View style={styles.centered}>
-                <SymbolView
-                  name={{ ios: 'person.2.slash', android: 'group', web: 'group' }}
-                  size={48}
-                  tintColor={theme.textSecondary}
-                />
+                <ActressIcon size={64} />
                 <ThemedText themeColor="textSecondary">No actresses yet</ThemedText>
               </View>
             }
@@ -236,48 +265,9 @@ export default function HomeScreen() {
                 onDelete={handleDelete}
               />
             )}
+            ListFooterComponent={paginationFooter}
           />
         )}
-
-        <ThemedView type="backgroundElement" style={styles.pagination}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Previous page"
-            disabled={page <= 1 || loading}
-            onPress={() => goToPage(page - 1)}
-            style={({ pressed }) => [
-              styles.pageButton,
-              (page <= 1 || loading) && styles.pageButtonDisabled,
-              pressed && styles.pressed,
-            ]}>
-            <SymbolView
-              name={{ ios: 'chevron.left', android: 'chevron_left', web: 'chevron_left' }}
-              size={18}
-              tintColor={page <= 1 ? theme.textSecondary : theme.text}
-            />
-          </Pressable>
-
-          <ThemedText type="smallBold">
-            Page {page} of {totalPages}
-          </ThemedText>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Next page"
-            disabled={page >= totalPages || loading}
-            onPress={() => goToPage(page + 1)}
-            style={({ pressed }) => [
-              styles.pageButton,
-              (page >= totalPages || loading) && styles.pageButtonDisabled,
-              pressed && styles.pressed,
-            ]}>
-            <SymbolView
-              name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
-              size={18}
-              tintColor={page >= totalPages ? theme.textSecondary : theme.text}
-            />
-          </Pressable>
-        </ThemedView>
       </SafeAreaView>
     </ThemedView>
   );
@@ -295,28 +285,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingBottom: Spacing.three,
   },
-  header: {
+  profileRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: Spacing.two,
-    paddingBottom: Spacing.three,
+    paddingBottom: Spacing.two,
   },
-  titleBlock: {
-    gap: 4,
-  },
-  title: {
-    fontSize: 34,
-    lineHeight: 38,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-  },
-  roundButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  headerButton: {
+    width: 32,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -338,7 +315,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    paddingBottom: Spacing.three,
+    paddingBottom: Spacing.two,
     flexGrow: 1,
   },
   row: {
@@ -348,15 +325,24 @@ const styles = StyleSheet.create({
   pagination: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: Spacing.two,
-    borderRadius: 16,
-    marginTop: Spacing.two,
+    alignSelf: 'center',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+    borderRadius: 10,
+    marginTop: Spacing.three,
+  },
+  pageLabel: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontVariant: ['tabular-nums'],
+    minWidth: 36,
+    textAlign: 'center',
   },
   pageButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -13,3 +13,4 @@ backend/dist
 node_modules
 AI/.env
 .expo
+dist

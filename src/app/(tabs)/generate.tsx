@@ -10,11 +10,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ActressIcon } from '@/components/actress-icon';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Spacing, TabBarHeight } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { sendAgentChat } from '@/lib/api';
 import type { ChatMessage } from '@/types/chat';
@@ -30,6 +31,9 @@ function toRows(messages: ChatMessage[]): MessageRow[] {
 
 export default function GenerateScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const keyboardVerticalOffset =
+    Platform.OS === 'ios' ? insets.top + TabBarHeight : TabBarHeight;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -71,86 +75,80 @@ export default function GenerateScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <ThemedText type="subtitle" style={styles.title}>
-            Generate
-          </ThemedText>
-          <ThemedText themeColor="textSecondary" type="small">
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoid}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={keyboardVerticalOffset}>
+        <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
+          <ThemedText themeColor="textSecondary" type="small" style={styles.subtitle}>
             Ask for actresses by movie, theme, or era
           </ThemedText>
-        </View>
 
-        {error && (
-          <ThemedView style={styles.errorBanner}>
-            <ThemedText type="small" style={styles.errorText}>
-              {error}
-            </ThemedText>
-          </ThemedView>
-        )}
-
-        <FlatList
-          ref={listRef}
-          data={rows}
-          keyExtractor={(item) => item.id}
-          style={styles.list}
-          contentContainerStyle={styles.listContent}
-          contentInsetAdjustmentBehavior="automatic"
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <SymbolView
-                name={{ ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' }}
-                size={48}
-                tintColor={theme.textSecondary}
-              />
-              <ThemedText themeColor="textSecondary" style={styles.emptyTitle}>
-                Describe who you want to find
+          {error && (
+            <ThemedView style={styles.errorBanner}>
+              <ThemedText type="small" style={styles.errorText}>
+                {error}
               </ThemedText>
-              <ThemedText themeColor="textSecondary" type="small" style={styles.emptyHint}>
-                Try “actress from a 90s sci-fi movie” or “modern action heroine with red hair”.
-                New profiles are saved automatically and appear on Home.
+            </ThemedView>
+          )}
+
+          <FlatList
+            ref={listRef}
+            data={rows}
+            keyExtractor={(item) => item.id}
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            contentInsetAdjustmentBehavior="automatic"
+            keyboardDismissMode="interactive"
+            keyboardShouldPersistTaps="handled"
+            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <ActressIcon size={64} />
+                <ThemedText themeColor="textSecondary" style={styles.emptyTitle}>
+                  Describe who you want to find
+                </ThemedText>
+                <ThemedText themeColor="textSecondary" type="small" style={styles.emptyHint}>
+                  Try “actress from a 90s sci-fi movie” or “modern action heroine with red hair”.
+                  New profiles are saved automatically and appear on Home.
+                </ThemedText>
+              </View>
+            }
+            renderItem={({ item }) => {
+              const isUser = item.role === 'user';
+              return (
+                <View
+                  style={[
+                    styles.bubbleRow,
+                    isUser ? styles.bubbleRowUser : styles.bubbleRowAssistant,
+                  ]}>
+                  <ThemedView
+                    type={isUser ? undefined : 'backgroundElement'}
+                    style={[
+                      styles.bubble,
+                      isUser && styles.bubbleUser,
+                      !isUser && { backgroundColor: theme.backgroundElement },
+                    ]}>
+                    <ThemedText
+                      selectable
+                      style={isUser ? styles.bubbleTextUser : undefined}>
+                      {item.content}
+                    </ThemedText>
+                  </ThemedView>
+                </View>
+              );
+            }}
+          />
+
+          {sending && (
+            <View style={styles.typingRow}>
+              <ActivityIndicator size="small" color="#7c5cff" />
+              <ThemedText themeColor="textSecondary" type="small">
+                Searching and saving…
               </ThemedText>
             </View>
-          }
-          renderItem={({ item }) => {
-            const isUser = item.role === 'user';
-            return (
-              <View
-                style={[
-                  styles.bubbleRow,
-                  isUser ? styles.bubbleRowUser : styles.bubbleRowAssistant,
-                ]}>
-                <ThemedView
-                  type={isUser ? undefined : 'backgroundElement'}
-                  style={[
-                    styles.bubble,
-                    isUser && styles.bubbleUser,
-                    !isUser && { backgroundColor: theme.backgroundElement },
-                  ]}>
-                  <ThemedText
-                    selectable
-                    style={isUser ? styles.bubbleTextUser : undefined}>
-                    {item.content}
-                  </ThemedText>
-                </ThemedView>
-              </View>
-            );
-          }}
-        />
+          )}
 
-        {sending && (
-          <View style={styles.typingRow}>
-            <ActivityIndicator size="small" color="#7c5cff" />
-            <ThemedText themeColor="textSecondary" type="small">
-              Searching and saving…
-            </ThemedText>
-          </View>
-        )}
-
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}>
           <ThemedView type="backgroundElement" style={styles.composer}>
             <TextInput
               value={input}
@@ -181,14 +179,17 @@ export default function GenerateScreen() {
               />
             </Pressable>
           </ThemedView>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
+        </SafeAreaView>
+      </KeyboardAvoidingView>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  keyboardAvoid: {
     flex: 1,
   },
   safeArea: {
@@ -198,14 +199,8 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     paddingHorizontal: Spacing.three,
   },
-  header: {
-    gap: 4,
-    paddingTop: Spacing.two,
+  subtitle: {
     paddingBottom: Spacing.three,
-  },
-  title: {
-    fontSize: 34,
-    lineHeight: 38,
   },
   list: {
     flex: 1,

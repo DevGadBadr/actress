@@ -12,6 +12,10 @@ export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '').replace(/localhost|127\.0\.0\.1/, 'devgadbadr.me') ??
   DEFAULT_API_URL;
 
+export function resolveProxiedImageUrl(url: string): string {
+  return `${API_BASE_URL}/agent-data/image?url=${encodeURIComponent(url)}`;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
@@ -30,7 +34,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     return undefined as T;
   }
 
-  return response.json() as Promise<T>;
+  const text = await response.text();
+  if (!text.trim()) {
+    return undefined as T;
+  }
+
+  return JSON.parse(text) as T;
 }
 
 export function fetchAgentData(params: {
