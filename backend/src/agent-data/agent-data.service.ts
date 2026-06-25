@@ -50,8 +50,20 @@ export class AgentDataService {
     }
 
     const rows = (data ?? []) as AgentDataRow[];
-    const ordered = shuffle ? shuffleArray(rows) : rows;
-    const total = count ?? ordered.length;
+    const total = count ?? rows.length;
+
+    if (shuffle) {
+      const shuffled = shuffleArray(rows);
+      return {
+        data: shuffled.map(mapRow),
+        page: 1,
+        limit: shuffled.length,
+        total,
+        totalPages: 1,
+      };
+    }
+
+    const ordered = rows;
     const totalPages = Math.max(1, Math.ceil(total / limit));
     const safePage = Math.min(page, totalPages);
     const start = (safePage - 1) * limit;

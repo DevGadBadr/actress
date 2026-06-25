@@ -2,11 +2,14 @@ import { Platform } from 'react-native';
 
 import type { AgentData, PaginatedAgentData } from '@/types/agent-data';
 
+const DEV_API_URL = 'https://devgadbadr.me/actressapi';
+
 const DEFAULT_API_URL =
-  Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+  Platform.OS === 'web' ? 'http://localhost:3000' : DEV_API_URL;
 
 export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') ?? DEFAULT_API_URL;
+  process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '').replace(/localhost|127\.0\.0\.1/, 'devgadbadr.me') ??
+  DEFAULT_API_URL;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {

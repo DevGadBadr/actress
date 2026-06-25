@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ActressCard } from '@/components/actress-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { deleteAgentData, fetchAgentData, toggleFavourite } from '@/lib/api';
 import type { AgentData } from '@/types/agent-data';
@@ -25,6 +25,7 @@ const PAGE_SIZE = 8;
 export default function HomeScreen() {
   const theme = useTheme();
   const [items, setItems] = useState<AgentData[]>([]);
+  const [cachedShuffleItems, setCachedShuffleItems] = useState<AgentData[] | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -33,6 +34,16 @@ export default function HomeScreen() {
   const [error, setError] = useState<string | null>(null);
   const [shuffleOnRefresh, setShuffleOnRefresh] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
+
+  const applyClientPage = useCallback((allItems: AgentData[], targetPage: number) => {
+    const pages = Math.max(1, Math.ceil(allItems.length / PAGE_SIZE));
+    const safePage = Math.min(targetPage, pages);
+    const start = (safePage - 1) * PAGE_SIZE;
+    setItems(allItems.slice(start, start + PAGE_SIZE));
+    setPage(safePage);
+    setTotalPages(pages);
+    setTotal(allItems.length);
+  }, []);
 
   const loadPage = useCallback(
     async (targetPage: number, shuffle: boolean, isRefresh = false) => {
@@ -44,15 +55,26 @@ export default function HomeScreen() {
       setError(null);
 
       try {
-        const result = await fetchAgentData({
-          page: targetPage,
-          limit: PAGE_SIZE,
-          shuffle,
-        });
-        setItems(result.data);
-        setPage(result.page);
-        setTotalPages(result.totalPages);
-        setTotal(result.total);
+        if (shuffle) {
+          const result = await fetchAgentData({
+            page: 1,
+            limit: PAGE_SIZE,
+            shuffle: true,
+          });
+          setCachedShuffleItems(result.data);
+          applyClientPage(result.data, targetPage);
+        } else {
+          setCachedShuffleItems(null);
+          const result = await fetchAgentData({
+            page: targetPage,
+            limit: PAGE_SIZE,
+            shuffle: false,
+          });
+          setItems(result.data);
+          setPage(result.page);
+          setTotalPages(result.totalPages);
+          setTotal(result.total);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load actresses');
       } finally {
@@ -60,7 +82,7 @@ export default function HomeScreen() {
         setRefreshing(false);
       }
     },
-    [],
+    [applyClientPage],
   );
 
   useEffect(() => {
@@ -73,7 +95,11 @@ export default function HomeScreen() {
 
   const goToPage = (nextPage: number) => {
     if (nextPage < 1 || nextPage > totalPages || nextPage === page) return;
-    loadPage(nextPage, shuffleOnRefresh);
+    if (cachedShuffleItems) {
+      applyClientPage(cachedShuffleItems, nextPage);
+      return;
+    }
+    loadPage(nextPage, false);
   };
 
   const handleToggleFavourite = async (id: number) => {
@@ -82,6 +108,9 @@ export default function HomeScreen() {
       const updated = await toggleFavourite(id);
       setItems((current) =>
         current.map((item) => (item.id === id ? updated : item)),
+      );
+      setCachedShuffleItems((current) =>
+        current?.map((item) => (item.id === id ? updated : item)) ?? null,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update favourite');
@@ -94,10 +123,16 @@ export default function HomeScreen() {
     setBusyId(id);
     try {
       await deleteAgentData(id);
-      const nextTotal = total - 1;
-      const nextTotalPages = Math.max(1, Math.ceil(nextTotal / PAGE_SIZE));
-      const nextPage = Math.min(page, nextTotalPages);
-      await loadPage(nextPage, shuffleOnRefresh);
+      if (cachedShuffleItems) {
+        const nextCache = cachedShuffleItems.filter((item) => item.id !== id);
+        setCachedShuffleItems(nextCache.length ? nextCache : null);
+        applyClientPage(nextCache, Math.min(page, Math.max(1, Math.ceil(nextCache.length / PAGE_SIZE))));
+      } else {
+        const nextTotal = total - 1;
+        const nextTotalPages = Math.max(1, Math.ceil(nextTotal / PAGE_SIZE));
+        const nextPage = Math.min(page, nextTotalPages);
+        await loadPage(nextPage, false);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete');
       setBusyId(null);
@@ -258,7 +293,7 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
     paddingHorizontal: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
+    paddingBottom: Spacing.three,
   },
   header: {
     flexDirection: 'row',
