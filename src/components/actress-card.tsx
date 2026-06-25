@@ -1,5 +1,5 @@
 import { SymbolView } from 'expo-symbols';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, View } from 'react-native';
 
 import { ActressIcon } from '@/components/actress-icon';
@@ -12,9 +12,8 @@ import type { AgentData } from '@/types/agent-data';
 
 type Props = {
   item: AgentData;
-  onToggleFavourite: (id: number) => void;
-  onDelete: (id: number) => void;
-  busy?: boolean;
+  onToggleFavourite: (id: number) => Promise<void>;
+  onDelete: (id: number) => Promise<void>;
 };
 
 async function openGoogleSearch(name: string) {
@@ -22,11 +21,16 @@ async function openGoogleSearch(name: string) {
   await Linking.openURL(url);
 }
 
-export function ActressCard({ item, onToggleFavourite, onDelete, busy }: Props) {
+export const ActressCard = memo(function ActressCard({
+  item,
+  onToggleFavourite,
+  onDelete,
+}: Props) {
   const theme = useTheme();
   const name = item.actress_name?.trim() || 'Unknown';
   const openingRef = useRef(false);
   const [imageFailed, setImageFailed] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'favourite' | 'delete' | null>(null);
 
   useEffect(() => {
     setImageFailed(false);
@@ -39,6 +43,23 @@ export function ActressCard({ item, onToggleFavourite, onDelete, busy }: Props) 
       openingRef.current = false;
     });
   }, [name]);
+
+  const handleToggleFavourite = useCallback(() => {
+    setPendingAction('favourite');
+    void onToggleFavourite(item.id).finally(() => {
+      setPendingAction(null);
+    });
+  }, [item.id, onToggleFavourite]);
+
+  const handleDelete = useCallback(() => {
+    setPendingAction('delete');
+    void onDelete(item.id).finally(() => {
+      setPendingAction(null);
+    });
+  }, [item.id, onDelete]);
+
+  const busy = pendingAction !== null;
+  const deleting = pendingAction === 'delete';
 
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
@@ -81,7 +102,7 @@ export function ActressCard({ item, onToggleFavourite, onDelete, busy }: Props) 
             accessibilityRole="button"
             accessibilityLabel={item.favourite ? 'Remove from favourites' : 'Add to favourites'}
             disabled={busy}
-            onPress={() => onToggleFavourite(item.id)}
+            onPress={handleToggleFavourite}
             style={({ pressed }) => [
               styles.iconButton,
               { backgroundColor: item.favourite ? '#3d2f00' : theme.backgroundSelected },
@@ -102,13 +123,13 @@ export function ActressCard({ item, onToggleFavourite, onDelete, busy }: Props) 
             accessibilityRole="button"
             accessibilityLabel="Delete actress"
             disabled={busy}
-            onPress={() => onDelete(item.id)}
+            onPress={handleDelete}
             style={({ pressed }) => [
               styles.iconButton,
               { backgroundColor: '#3a1515' },
               pressed && styles.pressed,
             ]}>
-            {busy ? (
+            {deleting ? (
               <ActivityIndicator size="small" color="#ff6b6b" />
             ) : (
               <SymbolView
@@ -122,7 +143,7 @@ export function ActressCard({ item, onToggleFavourite, onDelete, busy }: Props) 
       </View>
     </ThemedView>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

@@ -64,3 +64,5 @@ export const Spacing = {
 export const MaxContentWidth = 800;
 
 export const TabBarHeight = 36;
+
+export const Accent = '#7c5cff';

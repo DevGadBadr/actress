@@ -1,5 +1,5 @@
 import { SymbolView } from 'expo-symbols';
-import { useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Switch,
   View,
+  type ListRenderItemInfo,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -23,6 +24,66 @@ import type { AgentData } from '@/types/agent-data';
 
 const PAGE_SIZE = 8;
 
+type PaginationProps = {
+  page: number;
+  totalPages: number;
+  loading: boolean;
+  onPrevious: () => void;
+  onNext: () => void;
+};
+
+const HomePagination = memo(function HomePagination({
+  page,
+  totalPages,
+  loading,
+  onPrevious,
+  onNext,
+}: PaginationProps) {
+  const theme = useTheme();
+
+  return (
+    <ThemedView type="backgroundElement" style={styles.pagination}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Previous page"
+        disabled={page <= 1 || loading}
+        onPress={onPrevious}
+        style={({ pressed }) => [
+          styles.pageButton,
+          (page <= 1 || loading) && styles.pageButtonDisabled,
+          pressed && styles.pressed,
+        ]}>
+        <SymbolView
+          name={{ ios: 'chevron.left', android: 'chevron_left', web: 'chevron_left' }}
+          size={14}
+          tintColor={page <= 1 ? theme.textSecondary : theme.text}
+        />
+      </Pressable>
+
+      <ThemedText themeColor="textSecondary" type="small" style={styles.pageLabel}>
+        {page} / {totalPages}
+      </ThemedText>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Next page"
+        disabled={page >= totalPages || loading}
+        onPress={onNext}
+        style={({ pressed }) => [
+          styles.pageButton,
+          (page >= totalPages || loading) && styles.pageButtonDisabled,
+          pressed && styles.pressed,
+        ]}>
+        <SymbolView
+          name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
+          size={14}
+          tintColor={page >= totalPages ? theme.textSecondary : theme.text}
+        />
+      </Pressable>
+    </ThemedView>
+  );
+});
+
 export default function HomeScreen() {
   const theme = useTheme();
   const [items, setItems] = useState<AgentData[]>([]);
@@ -34,7 +95,13 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shuffleOnRefresh, setShuffleOnRefresh] = useState(false);
-  const [busyId, setBusyId] = useState<number | null>(null);
+
+  const pageRef = useRef(page);
+  pageRef.current = page;
+  const totalRef = useRef(total);
+  totalRef.current = total;
+  const shuffleRef = useRef(cachedShuffleItems);
+  shuffleRef.current = cachedShuffleItems;
 
   const applyClientPage = useCallback((allItems: AgentData[], targetPage: number) => {
     const pages = Math.max(1, Math.ceil(allItems.length / PAGE_SIZE));
@@ -47,10 +114,16 @@ export default function HomeScreen() {
   }, []);
 
   const loadPage = useCallback(
-    async (targetPage: number, shuffle: boolean, isRefresh = false) => {
+    async (
+      targetPage: number,
+      shuffle: boolean,
+      options?: { isRefresh?: boolean; silent?: boolean },
+    ) => {
+      const { isRefresh = false, silent = false } = options ?? {};
+
       if (isRefresh) {
         setRefreshing(true);
-      } else {
+      } else if (!silent) {
         setLoading(true);
       }
       setError(null);
@@ -91,97 +164,99 @@ export default function HomeScreen() {
   }, [loadPage]);
 
   const handleRefresh = useCallback(() => {
-    loadPage(1, shuffleOnRefresh, true);
+    loadPage(1, shuffleOnRefresh, { isRefresh: true });
   }, [loadPage, shuffleOnRefresh]);
 
-  const goToPage = (nextPage: number) => {
-    if (nextPage < 1 || nextPage > totalPages || nextPage === page) return;
-    if (cachedShuffleItems) {
-      applyClientPage(cachedShuffleItems, nextPage);
-      return;
-    }
-    loadPage(nextPage, false);
-  };
+  const goToPage = useCallback(
+    (nextPage: number) => {
+      if (nextPage < 1 || nextPage > totalPages || nextPage === page) return;
+      if (shuffleRef.current) {
+        applyClientPage(shuffleRef.current, nextPage);
+        return;
+      }
+      loadPage(nextPage, false);
+    },
+    [applyClientPage, loadPage, page, totalPages],
+  );
 
-  const handleToggleFavourite = async (id: number) => {
-    setBusyId(id);
+  const handleToggleFavourite = useCallback(async (id: number) => {
     try {
       const updated = await toggleFavourite(id);
-      setItems((current) =>
-        current.map((item) => (item.id === id ? updated : item)),
-      );
+      setItems((current) => current.map((item) => (item.id === id ? updated : item)));
       setCachedShuffleItems((current) =>
         current?.map((item) => (item.id === id ? updated : item)) ?? null,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update favourite');
-    } finally {
-      setBusyId(null);
+      throw err;
     }
-  };
+  }, []);
 
-  const handleDelete = async (id: number) => {
-    setBusyId(id);
-    try {
-      await deleteAgentData(id);
-      if (cachedShuffleItems) {
-        const nextCache = cachedShuffleItems.filter((item) => item.id !== id);
-        setCachedShuffleItems(nextCache.length ? nextCache : null);
-        applyClientPage(nextCache, Math.min(page, Math.max(1, Math.ceil(nextCache.length / PAGE_SIZE))));
-      } else {
-        const nextTotal = total - 1;
+  const handleDelete = useCallback(
+    async (id: number) => {
+      try {
+        await deleteAgentData(id);
+
+        const currentPage = pageRef.current;
+        const currentTotal = totalRef.current;
+        const shuffle = shuffleRef.current;
+        const nextTotal = Math.max(0, currentTotal - 1);
         const nextTotalPages = Math.max(1, Math.ceil(nextTotal / PAGE_SIZE));
-        const nextPage = Math.min(page, nextTotalPages);
-        await loadPage(nextPage, false);
+        const nextPage = Math.min(currentPage, nextTotalPages);
+
+        if (shuffle) {
+          const nextCache = shuffle.filter((item) => item.id !== id);
+          setCachedShuffleItems(nextCache.length ? nextCache : null);
+          setItems(nextCache);
+          setTotal(nextCache.length);
+          setTotalPages(Math.max(1, Math.ceil(nextCache.length / PAGE_SIZE)));
+          setPage(1);
+          return;
+        }
+
+        let nextItems: AgentData[] = [];
+        setItems((current) => {
+          nextItems = current.filter((item) => item.id !== id);
+          return nextItems;
+        });
+        setTotal(nextTotal);
+        setTotalPages(nextTotalPages);
+
+        if (nextItems.length === 0 && currentPage > 1) {
+          setPage(nextPage);
+          await loadPage(nextPage, false, { silent: true });
+          return;
+        }
+
+        if (nextPage !== currentPage) {
+          setPage(nextPage);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to delete');
+        throw err;
       }
-      setBusyId(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete');
-      setBusyId(null);
-    }
-  };
-
-  const paginationFooter = (
-    <ThemedView type="backgroundElement" style={styles.pagination}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Previous page"
-        disabled={page <= 1 || loading}
-        onPress={() => goToPage(page - 1)}
-        style={({ pressed }) => [
-          styles.pageButton,
-          (page <= 1 || loading) && styles.pageButtonDisabled,
-          pressed && styles.pressed,
-        ]}>
-        <SymbolView
-          name={{ ios: 'chevron.left', android: 'chevron_left', web: 'chevron_left' }}
-          size={14}
-          tintColor={page <= 1 ? theme.textSecondary : theme.text}
-        />
-      </Pressable>
-
-      <ThemedText themeColor="textSecondary" type="small" style={styles.pageLabel}>
-        {page} / {totalPages}
-      </ThemedText>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Next page"
-        disabled={page >= totalPages || loading}
-        onPress={() => goToPage(page + 1)}
-        style={({ pressed }) => [
-          styles.pageButton,
-          (page >= totalPages || loading) && styles.pageButtonDisabled,
-          pressed && styles.pressed,
-        ]}>
-        <SymbolView
-          name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
-          size={14}
-          tintColor={page >= totalPages ? theme.textSecondary : theme.text}
-        />
-      </Pressable>
-    </ThemedView>
+    },
+    [loadPage],
   );
+
+  const renderItem = useCallback(
+    ({ item }: ListRenderItemInfo<AgentData>) => (
+      <ActressCard
+        item={item}
+        onToggleFavourite={handleToggleFavourite}
+        onDelete={handleDelete}
+      />
+    ),
+    [handleToggleFavourite, handleDelete],
+  );
+
+  const handlePreviousPage = useCallback(() => {
+    goToPage(page - 1);
+  }, [goToPage, page]);
+
+  const handleNextPage = useCallback(() => {
+    goToPage(page + 1);
+  }, [goToPage, page]);
 
   return (
     <ThemedView style={styles.container}>
@@ -244,6 +319,7 @@ export default function HomeScreen() {
             contentContainerStyle={styles.listContent}
             contentInsetAdjustmentBehavior="automatic"
             style={styles.list}
+            removeClippedSubviews
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -257,15 +333,16 @@ export default function HomeScreen() {
                 <ThemedText themeColor="textSecondary">No actresses yet</ThemedText>
               </View>
             }
-            renderItem={({ item }) => (
-              <ActressCard
-                item={item}
-                busy={busyId === item.id}
-                onToggleFavourite={handleToggleFavourite}
-                onDelete={handleDelete}
+            renderItem={renderItem}
+            ListFooterComponent={
+              <HomePagination
+                page={page}
+                totalPages={totalPages}
+                loading={loading}
+                onPrevious={handlePreviousPage}
+                onNext={handleNextPage}
               />
-            )}
-            ListFooterComponent={paginationFooter}
+            }
           />
         )}
       </SafeAreaView>

@@ -14,6 +14,7 @@ const SYSTEM_PROMPT =
   'You are an agent that finds actresses based on a movie or theme. ' +
   'First use search_actress_knowledge to check if a matching actress is already saved. ' +
   'If nothing relevant is found, use the web_search tool to find a new actress and make it new/modern results, a direct image URL, ' +
+  'and try to find the actress picture url from sexiestpornstars.com website if not found then go for another ' +
   'and write a short description, then use save_actress to store her in the database.';
 
 const TOOL_DEFINITIONS: ChatCompletionTool[] = [

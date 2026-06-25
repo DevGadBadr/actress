@@ -10,17 +10,20 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ActressIcon } from '@/components/actress-icon';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing, TabBarHeight } from '@/constants/theme';
+import { Accent, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { sendAgentChat } from '@/lib/api';
 import type { ChatMessage } from '@/types/chat';
 
 type MessageRow = ChatMessage & { id: string };
+
+const CHAR_COUNT_THRESHOLD = 1800;
+const MAX_INPUT_LENGTH = 2000;
 
 function toRows(messages: ChatMessage[]): MessageRow[] {
   return messages.map((message, index) => ({
@@ -31,25 +34,39 @@ function toRows(messages: ChatMessage[]): MessageRow[] {
 
 export default function GenerateScreen() {
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
-  const keyboardVerticalOffset =
-    Platform.OS === 'ios' ? insets.top + TabBarHeight : TabBarHeight;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<FlatList<MessageRow>>(null);
+  const inputRef = useRef<TextInput>(null);
+
+  const listHeader = (
+    <View>
+      <ThemedText themeColor="textSecondary" type="small" style={styles.subtitle}>
+        Ask for actresses by movie, theme, or era
+      </ThemedText>
+      {error ? (
+        <ThemedView style={styles.errorBanner}>
+          <ThemedText type="small" style={styles.errorText}>
+            {error}
+          </ThemedText>
+        </ThemedView>
+      ) : null}
+    </View>
+  );
 
   const handleSend = useCallback(async () => {
     const trimmed = input.trim();
     if (!trimmed || sending) return;
 
-    setInput('');
+    const previousMessages = messages;
     setError(null);
     setSending(true);
+    setInput('');
 
     const optimistic: ChatMessage[] = [
-      ...messages,
+      ...previousMessages,
       { role: 'user', content: trimmed },
     ];
     setMessages(optimistic);
@@ -57,41 +74,49 @@ export default function GenerateScreen() {
     try {
       const response = await sendAgentChat({
         message: trimmed,
-        history: messages,
+        history: previousMessages,
       });
       setMessages(response.messages);
       requestAnimationFrame(() => {
         listRef.current?.scrollToEnd({ animated: true });
       });
     } catch (err) {
-      setMessages(messages);
+      setMessages(previousMessages);
+      setInput(trimmed);
       setError(err instanceof Error ? err.message : 'Failed to reach the agent');
     } finally {
       setSending(false);
     }
   }, [input, messages, sending]);
 
+  const handleWebInputKeyDown = useCallback(
+    (event: { key: string; shiftKey: boolean; preventDefault: () => void }) => {
+      if (event.key !== 'Enter' || event.shiftKey) return;
+      event.preventDefault();
+      void handleSend();
+    },
+    [handleSend],
+  );
+
+  const handleInputFocus = useCallback(() => {
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToEnd({ animated: true });
+    });
+  }, []);
+
+  const handleBodyPress = useCallback(() => {
+    inputRef.current?.focus();
+  }, []);
+
   const rows = toRows(messages);
 
   return (
     <ThemedView style={styles.container}>
-      <KeyboardAvoidingView
-        style={styles.keyboardAvoid}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={keyboardVerticalOffset}>
-        <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
-          <ThemedText themeColor="textSecondary" type="small" style={styles.subtitle}>
-            Ask for actresses by movie, theme, or era
-          </ThemedText>
-
-          {error && (
-            <ThemedView style={styles.errorBanner}>
-              <ThemedText type="small" style={styles.errorText}>
-                {error}
-              </ThemedText>
-            </ThemedView>
-          )}
-
+      <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
+        <KeyboardAvoidingView
+          style={styles.keyboardAvoid}
+          behavior="padding"
+          keyboardVerticalOffset={0}>
           <FlatList
             ref={listRef}
             data={rows}
@@ -99,11 +124,12 @@ export default function GenerateScreen() {
             style={styles.list}
             contentContainerStyle={styles.listContent}
             contentInsetAdjustmentBehavior="automatic"
-            keyboardDismissMode="interactive"
-            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="none"
+            keyboardShouldPersistTaps="always"
+            ListHeaderComponent={listHeader}
             onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
             ListEmptyComponent={
-              <View style={styles.emptyState}>
+              <Pressable style={styles.emptyState} onPress={handleBodyPress}>
                 <ActressIcon size={64} />
                 <ThemedText themeColor="textSecondary" style={styles.emptyTitle}>
                   Describe who you want to find
@@ -112,7 +138,7 @@ export default function GenerateScreen() {
                   Try “actress from a 90s sci-fi movie” or “modern action heroine with red hair”.
                   New profiles are saved automatically and appear on Home.
                 </ThemedText>
-              </View>
+              </Pressable>
             }
             renderItem={({ item }) => {
               const isUser = item.role === 'user';
@@ -140,47 +166,63 @@ export default function GenerateScreen() {
             }}
           />
 
-          {sending && (
-            <View style={styles.typingRow}>
-              <ActivityIndicator size="small" color="#7c5cff" />
-              <ThemedText themeColor="textSecondary" type="small">
-                Searching and saving…
-              </ThemedText>
-            </View>
-          )}
+          <View style={styles.footer}>
+            {sending && (
+              <View style={styles.typingRow}>
+                <ActivityIndicator size="small" color={Accent} />
+                <ThemedText themeColor="textSecondary" type="small">
+                  Searching and saving…
+                </ThemedText>
+              </View>
+            )}
 
-          <ThemedView type="backgroundElement" style={styles.composer}>
-            <TextInput
-              value={input}
-              onChangeText={setInput}
-              placeholder="Tell the agent what to find…"
-              placeholderTextColor={theme.textSecondary}
-              multiline
-              maxLength={2000}
-              style={[styles.input, { color: theme.text }]}
-              editable={!sending}
-              onSubmitEditing={handleSend}
-              blurOnSubmit={false}
-            />
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Send message"
-              disabled={!input.trim() || sending}
-              onPress={handleSend}
-              style={({ pressed }) => [
-                styles.sendButton,
-                (!input.trim() || sending) && styles.sendButtonDisabled,
-                pressed && styles.pressed,
-              ]}>
-              <SymbolView
-                name={{ ios: 'arrow.up.circle.fill', android: 'send', web: 'send' }}
-                size={32}
-                tintColor={!input.trim() || sending ? theme.textSecondary : '#7c5cff'}
-              />
-            </Pressable>
-          </ThemedView>
-        </SafeAreaView>
-      </KeyboardAvoidingView>
+            <ThemedView type="backgroundElement" style={styles.composer}>
+              <View style={styles.inputColumn}>
+                <TextInput
+                  ref={inputRef}
+                  value={input}
+                  onChangeText={setInput}
+                  placeholder="Tell the agent what to find…"
+                  placeholderTextColor={theme.textSecondary}
+                  multiline
+                  maxLength={MAX_INPUT_LENGTH}
+                  style={[styles.input, { color: theme.text }]}
+                  editable={!sending}
+                  returnKeyType="send"
+                  submitBehavior={Platform.OS === 'ios' ? 'submit' : undefined}
+                  accessibilityLabel="Search query"
+                  accessibilityHint="Describe an actress by movie, theme, or era, then send your message"
+                  onFocus={handleInputFocus}
+                  onSubmitEditing={handleSend}
+                  {...(Platform.OS === 'web' ? { onKeyDown: handleWebInputKeyDown } : {})}
+                  blurOnSubmit={false}
+                />
+                {input.length >= CHAR_COUNT_THRESHOLD && (
+                  <ThemedText themeColor="textSecondary" type="small" style={styles.charCount}>
+                    {input.length}/{MAX_INPUT_LENGTH}
+                  </ThemedText>
+                )}
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Send message"
+                disabled={!input.trim() || sending}
+                onPress={handleSend}
+                style={({ pressed }) => [
+                  styles.sendButton,
+                  (!input.trim() || sending) && styles.sendButtonDisabled,
+                  pressed && styles.pressed,
+                ]}>
+                <SymbolView
+                  name={{ ios: 'arrow.up.circle.fill', android: 'send', web: 'send' }}
+                  size={32}
+                  tintColor={!input.trim() || sending ? theme.textSecondary : Accent}
+                />
+              </Pressable>
+            </ThemedView>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
     </ThemedView>
   );
 }
@@ -189,15 +231,18 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  keyboardAvoid: {
-    flex: 1,
-  },
   safeArea: {
     flex: 1,
     maxWidth: MaxContentWidth,
     width: '100%',
     alignSelf: 'center',
     paddingHorizontal: Spacing.three,
+  },
+  keyboardAvoid: {
+    flex: 1,
+  },
+  footer: {
+    paddingTop: Spacing.two,
   },
   subtitle: {
     paddingBottom: Spacing.three,
@@ -243,7 +288,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
   },
   bubbleUser: {
-    backgroundColor: '#7c5cff',
+    backgroundColor: Accent,
   },
   bubbleTextUser: {
     color: '#ffffff',
@@ -262,15 +307,22 @@ const styles = StyleSheet.create({
     paddingLeft: Spacing.three,
     paddingRight: Spacing.two,
     paddingVertical: Spacing.two,
-    marginBottom: Spacing.three,
+  },
+  inputColumn: {
+    flex: 1,
   },
   input: {
-    flex: 1,
+    width: '100%',
     fontSize: 16,
     lineHeight: 22,
     maxHeight: 120,
     paddingTop: Platform.OS === 'ios' ? 8 : 4,
     paddingBottom: Platform.OS === 'ios' ? 8 : 4,
+    ...(Platform.OS === 'android' ? { textAlignVertical: 'top' as const } : {}),
+  },
+  charCount: {
+    textAlign: 'right',
+    paddingTop: Spacing.half,
   },
   sendButton: {
     width: 40,
