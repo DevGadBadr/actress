@@ -7,3 +7,23 @@
   --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
   --font-serif: Georgia, 'Times New Roman', serif;
 }
+
+html {
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: light) {
+  html,
+  body {
+    color-scheme: light;
+    background-color: #ffffff;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  html,
+  body {
+    color-scheme: dark;
+    background-color: #000000;
+  }
+}
